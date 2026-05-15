@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web BLE - Dashboard</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background-color: #f4f6f9; color: #333; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        h2 { margin-top: 0; color: #222; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #666; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
+        
+        /* 버튼 스타일 변경 */
+        button { width: 100%; padding: 14px; background-color: #4f46e5; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; transition: background 0.2s; }
+        button:hover { background-color: #4338ca; }
+        button:disabled { background-color: #cbd5e1; cursor: not-allowed; }
+
+        /* 연결된 장치 정보 뷰 */
+        #deviceDisplay { display: none; background: #e0e7ff; padding: 15px; border-radius: 8px; border-left: 5px solid #4f46e5; margin-bottom: 15px; }
+        .device-name { font-size: 18px; font-weight: bold; color: #1e1b4b; }
+        .device-id { font-size: 12px; color: #4338ca; font-family: monospace; }
+
+        #status { padding: 12px; background-color: #1e293b; color: #38bdf8; border-radius: 6px; white-space: pre-line; font-family: monospace; font-size: 13px; max-height: 150px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+
+    <!-- 1. WiFi 설정 입력 카드 -->
+    <div class="card">
+        <h2>1. WiFi 정보 입력</h2>
+        <div class="form-group">
+            <label for="ssid">WiFi SSID</label>
+            <input type="text" id="ssid" placeholder="연결할 와이파이 이름">
+        </div>
+        <div class="form-group">
+            <label for="password">WiFi 비밀번호</label>
+            <input type="password" id="password" placeholder="와이파이 비밀번호">
+        </div>
+    </div>
+
+    <!-- 2. 제어 및 상태 카드 -->
+    <div class="card">
+        <h2>2. BLE 연결 및 전송</h2>
+        
+        <!-- 브라우저 창에서 선택 완료하면 여기에 기기 정보가 나타납니다 -->
+        <div id="deviceDisplay">
+            <div class="device-name" id="connectedName">장치 이름</div>
+            <div class="device-id" id="connectedId">ID: 호스트 주소</div>
+        </div>
+
+        <button id="connectBtn">블루투스 기기 찾기</button>
+    </div>
+
+    <div class="card" style="background: #1e293b;">
+        <h3 style="color: white; margin-top:0; font-size: 14px;">실시간 로그</h3>
+        <div id="status">대기 중...</div>
+    </div>
+
+    <script>
+        const TARGET_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+        const TARGET_CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+
+        const connectBtn = document.getElementById('connectBtn');
+        const statusDiv = document.getElementById('status');
+        const deviceDisplay = document.getElementById('deviceDisplay');
+        const connectedName = document.getElementById('connectedName');
+        const connectedId = document.getElementById('connectedId');
+
+        function log(message) {
+            statusDiv.innerText += `\n> ${message}`;
+            statusDiv.scrollTop = statusDiv.scrollHeight;
+        }
+
+        connectBtn.addEventListener('click', async () => {
+            const ssid = document.getElementById('ssid').value;
+            const password = document.getElementById('password').value;
+
+            if (!ssid) {
+                alert('WiFi SSID를 입력해주세요.');
+                return;
+            }
+
+            statusDiv.innerText = "프로세스 시작...";
+            connectBtn.disabled = true;
+
+            try {
+                // 브라우저 시스템 팝업창을 띄워 사용자가 선택하게 함
+                log('브라우저 기기 선택 창 활성화...');
+                const device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: [TARGET_SERVICE_UUID] 
+                });
+
+                // 사용자가 팝업에서 기기를 고르면, 그 기기 정보를 본문(HTML)에 반영!
+                connectedName.innerText = `Connected: ${device.name || '이름 없는 장치'}`;
+                connectedId.innerText = `Device ID: ${device.id}`;
+                deviceDisplay.style.display = 'block'; 
+                
+                log(`장치 선택됨 -> [${device.name || 'Unknown'}]`);
+
+                // GATT 연결 및 데이터 전송 실행
+                log('GATT 서버 연결 중...');
+                const server = await device.gatt.connect();
+
+                log('서비스 및 캐릭터리스틱 탐색 중...');
+                const service = await server.getPrimaryService(TARGET_SERVICE_UUID);
+                const characteristic = await service.getCharacteristic(TARGET_CHARACTERISTIC_UUID);
+
+                const payload = JSON.stringify({ ssid: ssid, pw: password });
+                const encoder = new TextEncoder();
+                
+                log('WiFi 정보를 기기로 전송 중...');
+                await characteristic.writeValue(encoder.encode(payload));
+                log('데이터 전송 성공!');
+
+                log('BLE 연결 해제 중...');
+                await server.disconnect();
+                log('모든 작업 완료.');
+
+            } catch (error) {
+                log(`[에러] ${error.message}`);
+                deviceDisplay.style.display = 'none';
+            } finally {
+                connectBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
