@@ -107,6 +107,7 @@
         }
 
         let device = null;
+        let manualDisconnect = false;
         let expectedNext = -1;
         let totalReceived = 0;
         let totalMissed = 0;
@@ -130,7 +131,7 @@
         }
 
         function handleNotification(event) {
-            const counter = event.target.value.getUint32(0, true); // little-endian uint32
+            const counter = event.target.value.getUint32(0, true);
             const now = new Date().toLocaleTimeString('ko-KR', {
                 hour12: false, hour: '2-digit', minute: '2-digit',
                 second: '2-digit', fractionalSecondDigits: 2
@@ -154,8 +155,16 @@
             updateQuality();
         }
 
-        function onDisconnected() {
-            log('연결이 끊어졌습니다.');
+        function showConnected(dev) {
+            connectedName.innerText = dev.name || '이름 없는 장치';
+            deviceDisplay.style.display = 'block';
+            connectBtn.style.display = 'none';
+            connectBtn.disabled = false;
+            disconnectBtn.style.display = 'block';
+            dataCard.style.display = 'block';
+        }
+
+        function showDisconnected() {
             deviceDisplay.style.display = 'none';
             disconnectBtn.style.display = 'none';
             connectBtn.style.display = 'block';
@@ -166,32 +175,79 @@
             totalMissed = 0;
         }
 
+        async function connectToDevice(dev) {
+            device = dev;
+            dev.removeEventListener('gattserverdisconnected', onDisconnected);
+            dev.addEventListener('gattserverdisconnected', onDisconnected);
+
+            const server = await dev.gatt.connect();
+            const service = await server.getPrimaryService(SERVICE_UUID);
+            const characteristic = await service.getCharacteristic(CHAR_UUID);
+            await characteristic.startNotifications();
+            characteristic.addEventListener('characteristicvaluechanged', handleNotification);
+            log('알림 구독 완료 — 카운터 수신 중');
+            showConnected(dev);
+        }
+
+        function onDisconnected() {
+            if (manualDisconnect) {
+                log('연결을 해제했습니다.');
+                manualDisconnect = false;
+                showDisconnected();
+                return;
+            }
+            log('연결이 끊어졌습니다. 재연결 시도 중...');
+            setTimeout(async () => {
+                try {
+                    await connectToDevice(device);
+                    log('재연결 성공');
+                } catch {
+                    log('재연결 실패 — 수동으로 다시 연결해 주세요.');
+                    showDisconnected();
+                }
+            }, 1000);
+        }
+
+        // 페이지 로드 시 이전에 허가된 장치에 자동 재연결
+        async function tryAutoReconnect() {
+            if (!navigator.bluetooth?.getDevices) return;
+            try {
+                const devices = await navigator.bluetooth.getDevices();
+                if (devices.length === 0) return;
+                const saved = devices[0];
+                log(`이전 장치 발견: ${saved.name || 'Unknown'} — 자동 재연결 중...`);
+                connectBtn.disabled = true;
+                await connectToDevice(saved);
+            } catch {
+                log('자동 재연결 실패 — 수동으로 연결해 주세요.');
+                connectBtn.disabled = false;
+            }
+        }
+
+        // 브라우저가 포그라운드로 돌아올 때 (페이지 리로드 없이 복귀한 경우)
+        document.addEventListener('visibilitychange', async () => {
+            if (document.visibilityState !== 'visible') return;
+            if (!device || device.gatt.connected) return;
+            log('화면 복귀 — 재연결 시도 중...');
+            try {
+                await connectToDevice(device);
+                log('재연결 성공');
+            } catch {
+                log('재연결 실패 — 수동으로 다시 연결해 주세요.');
+                showDisconnected();
+            }
+        });
+
         connectBtn.addEventListener('click', async () => {
             statusDiv.innerText = '연결 시작...';
             connectBtn.disabled = true;
             try {
-                device = await navigator.bluetooth.requestDevice({
+                const dev = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
                     optionalServices: [SERVICE_UUID]
                 });
-                device.addEventListener('gattserverdisconnected', onDisconnected);
-                log(`장치 선택: ${device.name || 'Unknown'}`);
-
-                const server = await device.gatt.connect();
-                log('GATT 연결 완료');
-
-                const service = await server.getPrimaryService(SERVICE_UUID);
-                const characteristic = await service.getCharacteristic(CHAR_UUID);
-                await characteristic.startNotifications();
-                characteristic.addEventListener('characteristicvaluechanged', handleNotification);
-                log('알림 구독 완료 — 카운터 수신 중');
-
-                connectedName.innerText = device.name || '이름 없는 장치';
-                deviceDisplay.style.display = 'block';
-                connectBtn.style.display = 'none';
-                disconnectBtn.style.display = 'block';
-                dataCard.style.display = 'block';
-
+                log(`장치 선택: ${dev.name || 'Unknown'}`);
+                await connectToDevice(dev);
             } catch (err) {
                 log(`[오류] ${err.message}`);
                 connectBtn.disabled = false;
@@ -200,9 +256,12 @@
 
         disconnectBtn.addEventListener('click', () => {
             if (device && device.gatt.connected) {
+                manualDisconnect = true;
                 device.gatt.disconnect();
             }
         });
+
+        window.addEventListener('load', tryAutoReconnect);
     </script>
 </body>
 </html>
