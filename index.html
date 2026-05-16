@@ -3,127 +3,204 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web BLE - Dashboard</title>
+    <title>BLE Counter Monitor</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background-color: #f4f6f9; color: #333; }
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #f4f6f9; color: #333; }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        h2 { margin-top: 0; color: #222; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #666; }
-        input[type="text"], input[type="password"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
-        
-        /* 버튼 스타일 변경 */
-        button { width: 100%; padding: 14px; background-color: #4f46e5; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; transition: background 0.2s; }
-        button:hover { background-color: #4338ca; }
-        button:disabled { background-color: #cbd5e1; cursor: not-allowed; }
+        h2 { margin-top: 0; color: #222; font-size: 18px; }
 
-        /* 연결된 장치 정보 뷰 */
-        #deviceDisplay { display: none; background: #e0e7ff; padding: 15px; border-radius: 8px; border-left: 5px solid #4f46e5; margin-bottom: 15px; }
-        .device-name { font-size: 18px; font-weight: bold; color: #1e1b4b; }
-        .device-id { font-size: 12px; color: #4338ca; font-family: monospace; }
+        .btn { width: 100%; padding: 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; transition: background 0.2s; color: white; margin-top: 8px; }
+        .btn:first-child { margin-top: 0; }
+        .btn-connect { background: #4f46e5; }
+        .btn-connect:hover { background: #4338ca; }
+        .btn-connect:disabled { background: #cbd5e1; cursor: not-allowed; }
+        .btn-disconnect { background: #ef4444; }
+        .btn-disconnect:hover { background: #dc2626; }
 
-        #status { padding: 12px; background-color: #1e293b; color: #38bdf8; border-radius: 6px; white-space: pre-line; font-family: monospace; font-size: 13px; max-height: 150px; overflow-y: auto; }
+        #deviceDisplay { display: none; background: #e0e7ff; padding: 12px; border-radius: 8px; border-left: 5px solid #4f46e5; margin-bottom: 12px; }
+        .device-name { font-size: 16px; font-weight: bold; color: #1e1b4b; }
+
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+        .stat-box { background: #f8fafc; border-radius: 8px; padding: 14px; text-align: center; }
+        .stat-label { font-size: 12px; color: #64748b; margin-bottom: 4px; }
+        .stat-value { font-size: 32px; font-weight: bold; color: #1e293b; font-family: monospace; }
+        .stat-sub { font-size: 11px; color: #94a3b8; margin-top: 4px; min-height: 16px; }
+
+        .quality-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 14px; font-weight: 600; color: #334155; }
+        .quality-bar-bg { background: #e2e8f0; border-radius: 999px; height: 14px; overflow: hidden; }
+        .quality-bar-fill { height: 100%; border-radius: 999px; width: 0%; background: #22c55e; transition: width 0.4s, background 0.4s; }
+        .quality-warning { color: #b45309; background: #fef3c7; border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-top: 10px; display: none; }
+
+        #dataCard { display: none; }
+
+        #status { padding: 12px; background: #0f172a; color: #38bdf8; border-radius: 6px; white-space: pre-line; font-family: monospace; font-size: 12px; max-height: 160px; overflow-y: auto; }
     </style>
 </head>
 <body>
 
-    <!-- 1. WiFi 설정 입력 카드 -->
     <div class="card">
-        <h2>1. WiFi 정보 입력</h2>
-        <div class="form-group">
-            <label for="ssid">WiFi SSID</label>
-            <input type="text" id="ssid" placeholder="연결할 와이파이 이름">
-        </div>
-        <div class="form-group">
-            <label for="password">WiFi 비밀번호</label>
-            <input type="password" id="password" placeholder="와이파이 비밀번호">
-        </div>
-    </div>
-
-    <!-- 2. 제어 및 상태 카드 -->
-    <div class="card">
-        <h2>2. BLE 연결 및 전송</h2>
-        
-        <!-- 브라우저 창에서 선택 완료하면 여기에 기기 정보가 나타납니다 -->
+        <h2>BLE 연결</h2>
         <div id="deviceDisplay">
-            <div class="device-name" id="connectedName">장치 이름</div>
-            <div class="device-id" id="connectedId">ID: 호스트 주소</div>
+            <div class="device-name" id="connectedName"></div>
         </div>
-
-        <button id="connectBtn">블루투스 기기 찾기</button>
+        <button class="btn btn-connect" id="connectBtn">블루투스 기기 찾기</button>
+        <button class="btn btn-disconnect" id="disconnectBtn" style="display:none;">연결 해제</button>
     </div>
 
-    <div class="card" style="background: #1e293b;">
-        <h3 style="color: white; margin-top:0; font-size: 14px;">실시간 로그</h3>
+    <div class="card" id="dataCard">
+        <h2>수신 카운터</h2>
+        <div class="stat-grid">
+            <div class="stat-box">
+                <div class="stat-label">최신 값</div>
+                <div class="stat-value" id="currentValue">-</div>
+                <div class="stat-sub" id="receivedTime">-</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">수신 패킷</div>
+                <div class="stat-value" id="totalReceived">0</div>
+                <div class="stat-sub" id="missedCount">누락 0개</div>
+            </div>
+        </div>
+        <div>
+            <div class="quality-header">
+                <span>통신 품질</span>
+                <span id="qualityPct">-</span>
+            </div>
+            <div class="quality-bar-bg">
+                <div class="quality-bar-fill" id="qualityFill"></div>
+            </div>
+            <div class="quality-warning" id="qualityWarning">패킷 누락이 감지됐습니다 — 통신 품질이 좋지 않습니다.</div>
+        </div>
+    </div>
+
+    <div class="card" style="background:#1e293b;">
+        <h3 style="color:white; margin-top:0; font-size:14px;">실시간 로그</h3>
         <div id="status">대기 중...</div>
     </div>
 
     <script>
-        const TARGET_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-        const TARGET_CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+        const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+        const CHAR_UUID    = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 
-        const connectBtn = document.getElementById('connectBtn');
-        const statusDiv = document.getElementById('status');
+        const connectBtn    = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const statusDiv     = document.getElementById('status');
         const deviceDisplay = document.getElementById('deviceDisplay');
         const connectedName = document.getElementById('connectedName');
-        const connectedId = document.getElementById('connectedId');
+        const dataCard      = document.getElementById('dataCard');
 
-        function log(message) {
-            statusDiv.innerText += `\n> ${message}`;
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let audioBuffer = null;
+        fetch('weak.mp3')
+            .then(r => r.arrayBuffer())
+            .then(buf => audioCtx.decodeAudioData(buf))
+            .then(decoded => { audioBuffer = decoded; })
+            .catch(() => {});
+
+        function playAlert() {
+            if (!audioBuffer) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const src = audioCtx.createBufferSource();
+            src.buffer = audioBuffer;
+            src.connect(audioCtx.destination);
+            src.start(0);
+        }
+
+        let device = null;
+        let expectedNext = -1;
+        let totalReceived = 0;
+        let totalMissed = 0;
+
+        function log(msg) {
+            const now = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+            statusDiv.innerText += `\n[${now}] ${msg}`;
             statusDiv.scrollTop = statusDiv.scrollHeight;
         }
 
-        connectBtn.addEventListener('click', async () => {
-            const ssid = document.getElementById('ssid').value;
-            const password = document.getElementById('password').value;
+        function updateQuality() {
+            const totalExpected = totalReceived + totalMissed;
+            if (totalExpected === 0) return;
+            const pct = Math.round((totalReceived / totalExpected) * 100);
+            document.getElementById('qualityPct').innerText = `${pct}%`;
+            const fill = document.getElementById('qualityFill');
+            fill.style.width = `${pct}%`;
+            fill.style.background = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
+            document.getElementById('qualityWarning').style.display = pct < 90 ? 'block' : 'none';
+            document.getElementById('missedCount').innerText = `누락 ${totalMissed}개`;
+        }
 
-            if (!ssid) {
-                alert('WiFi SSID를 입력해주세요.');
-                return;
+        function handleNotification(event) {
+            const counter = event.target.value.getUint32(0, true); // little-endian uint32
+            const now = new Date().toLocaleTimeString('ko-KR', {
+                hour12: false, hour: '2-digit', minute: '2-digit',
+                second: '2-digit', fractionalSecondDigits: 2
+            });
+
+            if (expectedNext >= 0 && counter !== expectedNext) {
+                const missed = counter - expectedNext;
+                totalMissed += missed;
+                log(`누락 감지: ${missed}개 (${expectedNext} ~ ${counter - 1})`);
+            }
+            expectedNext = counter + 1;
+            totalReceived++;
+
+            if (counter > 0 && counter % 100 === 0) {
+                playAlert();
             }
 
-            statusDiv.innerText = "프로세스 시작...";
+            document.getElementById('currentValue').innerText = counter;
+            document.getElementById('receivedTime').innerText = now;
+            document.getElementById('totalReceived').innerText = totalReceived;
+            updateQuality();
+        }
+
+        function onDisconnected() {
+            log('연결이 끊어졌습니다.');
+            deviceDisplay.style.display = 'none';
+            disconnectBtn.style.display = 'none';
+            connectBtn.style.display = 'block';
+            connectBtn.disabled = false;
+            dataCard.style.display = 'none';
+            expectedNext = -1;
+            totalReceived = 0;
+            totalMissed = 0;
+        }
+
+        connectBtn.addEventListener('click', async () => {
+            statusDiv.innerText = '연결 시작...';
             connectBtn.disabled = true;
-
             try {
-                // 브라우저 시스템 팝업창을 띄워 사용자가 선택하게 함
-                log('브라우저 기기 선택 창 활성화...');
-                const device = await navigator.bluetooth.requestDevice({
+                device = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
-                    optionalServices: [TARGET_SERVICE_UUID] 
+                    optionalServices: [SERVICE_UUID]
                 });
+                device.addEventListener('gattserverdisconnected', onDisconnected);
+                log(`장치 선택: ${device.name || 'Unknown'}`);
 
-                // 사용자가 팝업에서 기기를 고르면, 그 기기 정보를 본문(HTML)에 반영!
-                connectedName.innerText = `Connected: ${device.name || '이름 없는 장치'}`;
-                connectedId.innerText = `Device ID: ${device.id}`;
-                deviceDisplay.style.display = 'block'; 
-                
-                log(`장치 선택됨 -> [${device.name || 'Unknown'}]`);
-
-                // GATT 연결 및 데이터 전송 실행
-                log('GATT 서버 연결 중...');
                 const server = await device.gatt.connect();
+                log('GATT 연결 완료');
 
-                log('서비스 및 캐릭터리스틱 탐색 중...');
-                const service = await server.getPrimaryService(TARGET_SERVICE_UUID);
-                const characteristic = await service.getCharacteristic(TARGET_CHARACTERISTIC_UUID);
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                const characteristic = await service.getCharacteristic(CHAR_UUID);
+                await characteristic.startNotifications();
+                characteristic.addEventListener('characteristicvaluechanged', handleNotification);
+                log('알림 구독 완료 — 카운터 수신 중');
 
-                const payload = JSON.stringify({ ssid: ssid, pw: password });
-                const encoder = new TextEncoder();
-                
-                log('WiFi 정보를 기기로 전송 중...');
-                await characteristic.writeValue(encoder.encode(payload));
-                log('데이터 전송 성공!');
+                connectedName.innerText = device.name || '이름 없는 장치';
+                deviceDisplay.style.display = 'block';
+                connectBtn.style.display = 'none';
+                disconnectBtn.style.display = 'block';
+                dataCard.style.display = 'block';
 
-                log('BLE 연결 해제 중...');
-                await server.disconnect();
-                log('모든 작업 완료.');
-
-            } catch (error) {
-                log(`[에러] ${error.message}`);
-                deviceDisplay.style.display = 'none';
-            } finally {
+            } catch (err) {
+                log(`[오류] ${err.message}`);
                 connectBtn.disabled = false;
+            }
+        });
+
+        disconnectBtn.addEventListener('click', () => {
+            if (device && device.gatt.connected) {
+                device.gatt.disconnect();
             }
         });
     </script>
